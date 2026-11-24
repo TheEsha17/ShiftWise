@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 // Place the background video at public/shiftwise-bg.mp4 (or change this path).
 const VIDEO_SRC = "/shiftwise-bg.mp4";
@@ -66,7 +67,7 @@ export default function ShiftWise() {
       <header><div className="wrap"><nav aria-label="Main">
        <a className="logo" href="#top" aria-label="ShiftWise home"><i></i>ShiftWise</a>
        <div className="links"><a href="#features">Features</a><a href="#how">How it works</a><a href="#benefits">Benefits</a><a href="#contact">Contact</a></div>
-       <a className="btn s o login" href="#contact">Login</a><a className="btn s p" href="#contact">Get started</a>
+       <Link className="btn s o login" to="/login">Login</Link><a className="btn s p" href="#contact">Get started</a>
       </nav></div></header>
       
       <main id="top">
