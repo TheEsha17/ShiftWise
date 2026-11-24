@@ -1,1 +1,45 @@
 @import "tailwindcss";
+
+/* Give every route the full viewport and one predictable box model. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* AdminProvider renders notifications beside the dashboard shell. Keep these
+   rules global so the toast stays styled and pinned to the visible viewport. */
+.tsw {
+  position: fixed;
+  top: max(20px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.ts {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #212622;
+  color: #fff;
+  box-shadow: 0 4px 14px #0004;
+  overflow-wrap: anywhere;
+}

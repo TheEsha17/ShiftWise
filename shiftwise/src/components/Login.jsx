@@ -23,7 +23,6 @@ export default function Login() {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
   const [tick, setTick] = useState(0);
 
   const pageRef = useRef(null);
@@ -91,7 +90,7 @@ export default function Login() {
       if (role === "employee") {
         navigate("/employee");
       } else {
-        setDone(true);
+        navigate("/admin");
       }
     } catch (err) {
       setFormError(
@@ -210,33 +209,7 @@ export default function Login() {
             ))}
           </div>
 
-          {done ? (
-            <div className="lg-ok" role="status">
-              <svg viewBox="0 0 52 52" aria-hidden="true">
-                <circle cx="26" cy="26" r="24" />
-                <path d="M14 27l8 8 16-17" />
-              </svg>
-
-              <b>Signed in as {role === "admin" ? "Admin" : "Employee"}.</b>
-              <span>{email.trim()}</span>
-
-              <p>
-                Demo mode: connect your backend in Login.jsx to make this real.
-              </p>
-
-              <button
-                className="lg-btn"
-                type="button"
-                onClick={() => {
-                  setDone(false);
-                  setPassword("");
-                }}
-              >
-                <span>Sign out</span>
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} noValidate>
               {formError && (
                 <div
                   key={"fe" + tick}
@@ -362,8 +335,7 @@ export default function Login() {
 
                 {!loading && <em aria-hidden="true">→</em>}
               </button>
-            </form>
-          )}
+          </form>
 
           <p className="lg-foot lg-in" style={d(".8s")}>
             New to ShiftWise?{" "}
