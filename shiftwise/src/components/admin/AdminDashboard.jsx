@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, CalendarDays, UserCheck, Repeat, Sun, Clock, BarChart3, Bell, Settings as SettingsIcon, LogOut, Search, ChevronDown, SunMoon } from "lucide-react";
+import { LayoutDashboard, Users, CalendarDays, UserCheck, Repeat, Sun, Clock, BarChart3, Bell, Settings as SettingsIcon, LogOut, Search, ChevronDown, SunMoon, UserRoundPlus } from "lucide-react";
 import "./admin.css";
 import { AdminProvider, useAdmin } from "./AdminStore";
 import EmployeeManagement from "./EmployeeManagement";
@@ -13,20 +13,21 @@ import Attendance from "./Attendance";
 import ReportsAnalytics from "./ReportsAnalytics";
 import Notifications from "./Notifications";
 import Settings from "./Settings";
+import AccessRequests from "./AccessRequests";
 
-const NAV = [["overview", "Overview", LayoutDashboard], ["employees", "Employee Management", Users], ["planner", "Shift Planner", CalendarDays], ["assign", "Shift Assignments", UserCheck], ["swaps", "Shift Change Requests", Repeat], ["leave", "Leave Management", Sun], ["attend", "Attendance", Clock], ["reports", "Reports & Analytics", BarChart3], ["notifs", "Notifications", Bell], ["settings", "Settings", SettingsIcon]];
-const PAGES = { overview: Overview, employees: EmployeeManagement, planner: ShiftPlanner, assign: ShiftAssignments, swaps: ShiftChangeRequests, leave: LeaveManagement, attend: Attendance, reports: ReportsAnalytics, notifs: Notifications, settings: Settings };
+const NAV = [["overview", "Overview", LayoutDashboard], ["access", "Access Requests", UserRoundPlus], ["employees", "Employee Management", Users], ["planner", "Shift Planner", CalendarDays], ["assign", "Shift Assignments", UserCheck], ["swaps", "Shift Change Requests", Repeat], ["leave", "Leave Management", Sun], ["attend", "Attendance", Clock], ["reports", "Reports & Analytics", BarChart3], ["notifs", "Notifications", Bell], ["settings", "Settings", SettingsIcon]];
+const PAGES = { overview: Overview, access: AccessRequests, employees: EmployeeManagement, planner: ShiftPlanner, assign: ShiftAssignments, swaps: ShiftChangeRequests, leave: LeaveManagement, attend: Attendance, reports: ReportsAnalytics, notifs: Notifications, settings: Settings };
 
 function Shell() {
-  const { R, L, N, toast } = useAdmin();
+  const { R, L, N, accessRequests, toast } = useAdmin();
   const navigate = useNavigate();
   const [pg, setPg] = useState("overview"), [q, setQ] = useState("");
-  const user = JSON.parse(localStorage.getItem("shiftwiseUser") || "{}");
-  const name = user.role === "admin" && user.name ? user.name : "Admin";
+  const user = JSON.parse(localStorage.getItem("shiftwiseUser") || sessionStorage.getItem("shiftwiseUser") || "{}");
+  const name = user.role === "Admin" && user.name ? user.name : "Admin";
   const initials = name.trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("sw-theme") || undefined; } catch { return undefined; } });
   const unread = N.filter((n) => !n.rd).length;
-  const bd = { swaps: R.filter((r) => r.st === "Pending").length, leave: L.filter((r) => r.st === "Pending").length, notifs: unread };
+  const bd = { access: accessRequests.filter((request) => request.status === "Pending").length, swaps: R.filter((r) => r.st === "Pending").length, leave: L.filter((r) => r.st === "Pending").length, notifs: unread };
   const flip = () => {
     const dark = theme ? theme === "dark" : matchMedia("(prefers-color-scheme:dark)").matches, t = dark ? "light" : "dark";
     setTheme(t); try { localStorage.setItem("sw-theme", t); } catch {}
@@ -34,6 +35,9 @@ function Shell() {
   };
   const logout = () => {
     localStorage.removeItem("shiftwiseUser");
+    localStorage.removeItem("shiftwiseToken");
+    sessionStorage.removeItem("shiftwiseUser");
+    sessionStorage.removeItem("shiftwiseToken");
     navigate("/");
   };
   const Page = PAGES[pg], title = NAV.find((n) => n[0] === pg)[1];
@@ -51,7 +55,7 @@ function Shell() {
       </aside>
       <main className="mn">
         <header className="tb">
-          <div><div className="ser">Good afternoon, {name}</div><small className="mut">Tuesday, 24 November 2026</small></div>
+          <div><div className="ser">Good afternoon, {name}</div><small className="mut">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</small></div>
           <div className="tr">
             <div className="sb2"><Search /><input className="in gs" placeholder="Search pages or employees" onKeyDown={(e) => { if (e.key === "Enter") { setQ(e.target.value); setPg("employees"); } }} /></div>
             <button className="ib" aria-label="Switch light or dark theme" onClick={flip}><SunMoon /></button>

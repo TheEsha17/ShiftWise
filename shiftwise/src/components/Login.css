@@ -86,13 +86,17 @@
 .lg-box > form > .lg-in:first-of-type, .lg-box form > div:first-child { margin-top: 0; }
 
 .lg-f.bad { animation: lgShake .4s; }
-.lg-box input[type="email"], .lg-box input[type="text"], .lg-box input[type="password"] {
+.lg-box input[type="email"], .lg-box input[type="text"], .lg-box input[type="password"], .lg-box select, .lg-box textarea {
   width: 100%; padding: 13px 14px; font: 400 16px 'Inter Tight', sans-serif; color: var(--ink);
   background: #FBF9F4; border: 1.5px solid var(--ink); border-radius: 4px; transition: box-shadow .25s, transform .25s, border-color .25s;
 }
 .lg-box input:hover { transform: translateY(-1px); }
 .lg-box input:focus { outline: none; box-shadow: 4px 4px 0 var(--chart); transform: translate(-1px, -1px); }
 .lg-box input[aria-invalid="true"] { border-color: #C0392B; }
+.lg-box select, .lg-box textarea { resize: vertical; }
+.lg-box select[aria-invalid="true"], .lg-box textarea[aria-invalid="true"] { border-color: #C0392B; }
+.lg-access-field { margin: 16px 0 0; }
+.lg-access-field small { display: block; margin-top: 5px; color: var(--char); font-size: 12px; }
 .lg-pass { position: relative; }
 .lg-pass input { padding-right: 70px !important; }
 .lg-pass button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 6px 10px; font: 600 13px 'Inter Tight', sans-serif; background: none; border: 0; cursor: pointer; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; transition: color .2s; }
@@ -130,6 +134,8 @@
   .lg-side { display: none; }
   .lg-logo-m { display: inline-flex; }
 }
+.lg-access-page .lg-back { position: absolute; top: 28px; left: clamp(20px, 4vw, 48px); }
+.lg-access-page .lg-dot { left: 75%; bottom: 8%; }
 @media (prefers-reduced-motion: reduce) {
   .lg-page *, .lg-page *::before, .lg-page *::after { animation: none !important; transition: none !important; }
 }

@@ -29,6 +29,9 @@ export default function ShiftWise() {
   const vref = useRef(null);
 
   useEffect(() => {
+    // Hide the browser scrollbar only while the landing page is mounted;
+    // scrolling and anchor navigation remain available.
+    document.documentElement.classList.add('landing-page');
     // scroll reveals + animated counters
     const io = new IntersectionObserver((es) => {
       es.forEach((e) => {
@@ -58,7 +61,12 @@ export default function ShiftWise() {
     addEventListener('scroll', onScroll, { passive: true });
     // background video
     if (vref.current) { vref.current.muted = true; vref.current.play().catch(() => {}); }
-    return () => { io.disconnect(); clearTimeout(t); removeEventListener('scroll', onScroll); };
+    return () => {
+      io.disconnect();
+      clearTimeout(t);
+      removeEventListener('scroll', onScroll);
+      document.documentElement.classList.remove('landing-page');
+    };
   }, []);
 
   return (

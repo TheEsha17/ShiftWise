@@ -1,6 +1,7 @@
 
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import api from "../api/axios";
 import "./Login.css";
 
 const ROLES = [
@@ -48,10 +49,6 @@ export default function Login() {
 
     const next = {};
 
-    if (!fullName.trim()) {
-      next.fullName = "Enter your full name.";
-    }
-
     if (!email.trim()) {
       next.email = "Enter your work email.";
     } else if (!emailOk(email.trim())) {
@@ -75,23 +72,30 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Demo login
-      await new Promise((r) => setTimeout(r, 900));
-
-      // Save logged-in user details
-      const user = {
-        name: fullName.trim(),
+      const response = await api.post("/auth/login", {
         email: email.trim(),
-        role: role,
+        password,
+        role,
+      });
+
+      const backendUser = response.data.user;
+      const normalizedRole = backendUser.role;
+      const user = {
+        id: backendUser._id,
+        name: backendUser.fullName,
+        email: backendUser.email,
+        role: normalizedRole,
       };
 
-      localStorage.setItem("shiftwiseUser", JSON.stringify(user));
-
-      if (role === "employee") {
-        navigate("/employee");
+      if (remember) {
+        localStorage.setItem("shiftwiseToken", response.data.token);
+        localStorage.setItem("shiftwiseUser", JSON.stringify(user));
       } else {
-        navigate("/admin");
+        sessionStorage.setItem("shiftwiseToken", response.data.token);
+        sessionStorage.setItem("shiftwiseUser", JSON.stringify(user));
       }
+
+      navigate(normalizedRole === "Admin" ? "/admin" : "/employee", { replace: true });
     } catch (err) {
       setFormError(
         err?.response?.data?.message ||
@@ -339,12 +343,9 @@ export default function Login() {
 
           <p className="lg-foot lg-in" style={d(".8s")}>
             New to ShiftWise?{" "}
-            <a
-              className="lg-ul"
-              href="mailto:hello@shiftwise.example"
-            >
+            <Link className="lg-ul" to="/request-access">
               Ask your admin for access
-            </a>
+            </Link>
           </p>
         </div>
       </main>

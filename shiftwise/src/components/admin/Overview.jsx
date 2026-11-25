@@ -5,11 +5,16 @@ import { useAdmin, useDecide, RequestRow, Pill, Tabs, Bars, st, DP, T, COL } fro
 const IC = { "user-plus": UserPlus, "calendar-days": CalendarDays, "user-check": UserCheck, check: Check, x: X, activity: Activity };
 
 export default function Overview({ go }) {
-  const { E, S, R, L, ACT } = useAdmin(), decide = useDecide(), [wf, setWf] = useState("Department");
-  const ts = S.filter((s) => s.wk === 0 && s.day === 1), present = ts.flatMap((s) => s.as).length - 1; // 1 absent in sample data
+  const { E, S, R, L, A, ACT } = useAdmin(), decide = useDecide(), [wf, setWf] = useState("Department");
+  const today = new Date();
+  const todayKey = today.toISOString().slice(0, 10);
+  const todayDay = (today.getDay() + 6) % 7;
+  const ts = S.filter((s) => s.wk === 0 && s.day === todayDay);
+  const todayAttendance = A.filter((record) => new Date(record.date).toISOString().slice(0, 10) === todayKey);
+  const present = todayAttendance.filter((record) => ["Present", "Late"].includes(record.status)).length;
   const pend = R.filter((r) => r.st === "Pending"), pn = pend.length + L.filter((r) => r.st === "Pending").length;
   const wfd = wf === "Department" ? DP.map((d, i) => [d, E.filter((e) => e.dept === d).length, COL[i]]) : Object.keys(T).map((k) => [k + " shift", ts.filter((s) => s.type === k).reduce((a, s) => a + s.as.length, 0), T[k][2]]);
-  const stats = [[Users, "var(--lime)", "Total employees", E.length, "across 3 locations"], [UserCheck, "var(--sand)", "Present today", present, `of ${ts.flatMap((s) => s.as).length} scheduled`], [CalendarCheck, "var(--lav)", "Active shifts", ts.length, `${ts.filter((s) => st(s) !== "Confirmed").length} need attention`], [Hourglass, "var(--coral)", "Pending requests", pn, "awaiting review"]];
+  const stats = [[Users, "var(--lime)", "Total employees", E.length, "active and on leave"], [UserCheck, "var(--sand)", "Present today", present, `${todayAttendance.length} attendance records`], [CalendarCheck, "var(--lav)", "Active shifts", ts.length, `${ts.reduce((n, s) => n + Math.max(0, s.need - s.as.length), 0)} open slots`], [Hourglass, "var(--coral)", "Pending requests", pn, "awaiting review"]];
   return (
     <>
       <h1>Overview</h1><p className="sub">Here’s what’s happening across your workforce today.</p>
@@ -19,7 +24,7 @@ export default function Overview({ go }) {
         {ts.map((s) => (
           <div className="rw" key={s.id} style={{ "--c": T[s.type][2] }}>
             <div className="f1"><div className="ser">{s.s} – {s.e}</div><small>{s.type} shift · {s.dept} · {s.loc}</small></div>
-            <small>{s.as.length ? s.as.map((i) => E.find((e) => e.id === i).name.replace(/ (\w).*/, " $1.")).join(", ") : "No one assigned"}</small>
+            <small>{s.as.length ? s.as.map((i) => E.find((e) => e.id === i)?.name || "Employee").join(", ") : "No one assigned"}</small>
             <Pill s={st(s)} />
           </div>
         ))}

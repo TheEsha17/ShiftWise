@@ -1,23 +1,40 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdmin, D, DP, LC, T, dd, Modal } from "./AdminStore";
+import api from "../../api/axios";
 
 const SF = [["day", "Day", 0, D], ["type", "Shift type", 0, Object.keys(T)], ["s", "Start time", "time"], ["e", "End time", "time"], ["dept", "Department", 0, DP], ["loc", "Location", 0, LC], ["need", "Staff required", "number"]];
 
 export default function ShiftPlanner() {
-  const { S, setS, log, toast } = useAdmin();
+  const { S, reload, log, toast } = useAdmin();
   const [wo, setWo] = useState(0), [m, setM] = useState(null); // m = {sh} (sh undefined = new shift)
   const ws = S.filter((s) => s.wk === wo);
 
-  const save = (o) => {
+  const save = async (o) => {
     if (o.e <= o.s) return toast("End time must be after start time");
     const sh = m.sh, need = Math.max(1, +o.need || 1);
     if (sh && need < sh.as.length) return toast(`${sh.as.length} already assigned. Unassign someone first`);
-    const v = { wk: wo, day: D.indexOf(o.day), type: o.type, s: o.s, e: o.e, dept: o.dept, loc: o.loc, need };
-    setS(sh ? S.map((x) => (x.id === sh.id ? { ...x, ...v } : x)) : [...S, { id: Math.max(0, ...S.map((x) => x.id)) + 1, as: [], ...v }]);
-    log(`Schedule updated: ${o.day} ${o.type} shift ${sh ? "edited" : "created"}`);
-    toast(sh ? "Shift updated" : "Shift created");
-    setM(null);
+    const payload = {
+      name: `${o.type} shift`,
+      type: o.type,
+      startTime: o.s,
+      endTime: o.e,
+      department: o.dept,
+      location: o.loc,
+      staffRequired: need,
+      weekOffset: sh ? sh.wk : wo,
+      dayIndex: D.indexOf(o.day),
+    };
+    try {
+      if (sh) await api.patch(`/shifts/${sh.id}`, payload);
+      else await api.post("/shifts", payload);
+      await reload();
+      log(`Schedule updated: ${o.day} ${o.type} shift ${sh ? "edited" : "created"}`);
+      toast(sh ? "Shift updated" : "Shift created");
+      setM(null);
+    } catch (error) {
+      toast(error.response?.data?.message || "Could not save shift.");
+    }
   };
 
   return (

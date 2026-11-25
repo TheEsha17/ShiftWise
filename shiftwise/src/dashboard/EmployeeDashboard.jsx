@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarPlus, ArrowLeftRight,
@@ -10,9 +10,9 @@ import {
 import './employeedashboard.css';
 
 import {
-  MY_SHIFTS, OPEN_SHIFTS, SWAPS, LEAVES,
-  NOTIFS, ATT, TODAY, fmt
+  TODAY, monday, fmt
 } from './data';
+import api from '../api/axios';
 
 import { Skeleton } from './ui';
 
@@ -52,6 +52,11 @@ const GREET =
   hour < 18 ? 'Good afternoon' :
   'Good evening';
 
+const normalizeType = (type) => String(type || 'early').toLowerCase();
+const displayTime = (value) => value
+  ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  : '—';
+
 export default function EmployeeDashboard() {
   const { section = 'overview' } = useParams();
   const nav = useNavigate();
@@ -62,12 +67,19 @@ export default function EmployeeDashboard() {
   const [q, setQ] = useState('');
   const [toasts, setToasts] = useState([]);
 
-  const user = JSON.parse(
-    localStorage.getItem('shiftwiseUser') || '{}'
-  );
+  const user = (() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem('shiftwiseUser') ||
+        sessionStorage.getItem('shiftwiseUser') ||
+        '{}'
+      );
+    } catch {
+      return {};
+    }
+  })();
 
   const NAME = user.name || 'Employee';
-  const EMAIL = user.email || '';
   const INITIALS = NAME
     .trim()
     .split(/\s+/)
@@ -76,28 +88,16 @@ export default function EmployeeDashboard() {
     .slice(0, 2)
     .toUpperCase();
 
-  const [shifts, setShifts] = useState(MY_SHIFTS);
-  const [open, setOpen] = useState(OPEN_SHIFTS);
-  const [swaps, setSwaps] = useState(SWAPS);
-  const [leaves, setLeaves] = useState(LEAVES);
-  const [notifs, setNotifs] = useState(NOTIFS);
-  const [att, setAtt] = useState(ATT);
-
-  useEffect(() => {
-    document.title = 'Dashboard · ShiftWise';
-    const t = setTimeout(() => setLoading(false), 650);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [section]);
-
-  const logout = () => {
-    localStorage.removeItem('shiftwiseUser');
-    nav('/login');
-  };
-
+  const [shifts, setShifts] = useState([]);
+  const [open, setOpen] = useState([]);
+  const [swaps, setSwaps] = useState([]);
+  const [swapData, setSwapData] = useState({ myAssignments: [] });
+  const [leaves, setLeaves] = useState([]);
+  const [notifs, setNotifs] = useState([]);
+  const [att, setAtt] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [preferences, setPreferences] = useState({});
+  const [dataError, setDataError] = useState('');
   const toast = (msg) => {
     const id = Math.random();
     setToasts((t) => [...t, { id, msg }]);
@@ -107,28 +107,159 @@ export default function EmployeeDashboard() {
     );
   };
 
-  const addNotif = (title, body) =>
-    setNotifs((n) => [
-      {
-        id: String(Math.random()),
-        title,
-        body,
-        time: 'Just now',
-        read: false
-      },
-      ...n
-    ]);
+  const loadData = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const [profileRes, shiftsRes, assignmentsRes, changesRes, swapRes, leavesRes, attendanceRes, notificationsRes, settingsRes] = await Promise.all([
+        api.get('/employees/me'),
+        api.get('/shifts?status=Active'),
+        api.get('/assignments'),
+        api.get('/requests/changes'),
+        api.get('/swaps'),
+        api.get('/leaves'),
+        api.get('/attendance'),
+        api.get('/notifications'),
+        api.get('/settings')
+      ]);
+      const employeeProfile = profileRes.data.employee;
+      const assigned = assignmentsRes.data.assignments;
+      const assignedShifts = assigned.filter((item) => item.shift).map((item) => ({
+        id: item._id,
+        assignmentId: item._id,
+        shiftId: item.shift._id,
+        date: new Date(item.assignedDate),
+        type: normalizeType(item.shift.type),
+        startTime: item.shift.startTime,
+        endTime: item.shift.endTime,
+        breakDuration: item.shift.breakDuration,
+        dept: item.shift.department,
+        loc: item.shift.location,
+        status: item.status,
+      }));
+      const myShiftIds = new Set(assigned.map((item) => String(item.shift?._id)));
+      const weekStart = monday(TODAY);
+      const occurrenceDate = (weekOffset, dayIndex) => new Date(Date.UTC(
+        weekStart.getFullYear(),
+        weekStart.getMonth(),
+        weekStart.getDate() + weekOffset * 7 + dayIndex
+      ));
+      const openShifts = shiftsRes.data.shifts
+        .filter((shift) => shift.status === 'Active' && shift.openSlots > 0 && !myShiftIds.has(String(shift._id)))
+        .map((shift) => ({
+          id: `${shift._id}-${shift.weekOffset || 0}-${shift.dayIndex || 0}`,
+          shiftId: shift._id,
+          date: occurrenceDate(shift.weekOffset || 0, shift.dayIndex || 0),
+          type: normalizeType(shift.type),
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          breakDuration: shift.breakDuration,
+          dept: shift.department,
+          loc: shift.location,
+          status: 'Open',
+          openSlots: shift.openSlots,
+        }))
+        .filter((shift) => shift.date.toISOString().slice(0, 10) >= TODAY.toISOString().slice(0, 10));
+      const leaveRows = leavesRes.data.requests.map((request) => ({
+        id: request._id,
+        type: request.leaveType,
+        from: new Date(request.startDate),
+        to: new Date(request.endDate),
+        reason: request.reason,
+        status: request.status,
+      }));
+      const changeRows = changesRes.data.requests.map((request) => ({
+        id: request._id,
+        kind: 'change',
+        dir: 'mine',
+        who: employeeProfile.fullName,
+        mine: request.currentShift?._id,
+        mineShift: request.currentShift,
+        theirs: typeof request.requestedShift === 'string'
+          ? request.requestedShift
+          : request.requestedShift?.label || 'Shift change requested',
+        status: request.status,
+      }));
+      const swapRows = swapRes.data.requests.map((request) => {
+        const isRequester = String(request.requester?._id) === String(employeeProfile._id);
+        return {
+          id: request._id,
+          kind: 'swap',
+          dir: isRequester ? 'mine' : 'in',
+          who: isRequester ? request.targetEmployee?.fullName : request.requester?.fullName,
+          requesterAssignment: request.requesterAssignment,
+          targetAssignment: request.targetAssignment,
+          status: request.status,
+        };
+      });
+      const attendanceRows = attendanceRes.data.records.map((record) => ({
+        ...record,
+        id: record._id,
+        date: new Date(record.date),
+        in: displayTime(record.checkInTime),
+        out: displayTime(record.checkOutTime),
+        inSeconds: record.checkInTime ? Math.floor(new Date(record.checkInTime).getTime() / 1000) : null,
+        outSeconds: record.checkOutTime ? Math.floor(new Date(record.checkOutTime).getTime() / 1000) : null,
+        late: record.status === 'Late',
+      }));
+      const preferencesSetting = settingsRes.data.settings.find((setting) => setting.key === 'employeePreferences');
 
+      setProfile(employeeProfile);
+      setShifts(assignedShifts);
+      setOpen(openShifts);
+      setSwaps([...changeRows, ...swapRows]);
+      setSwapData({ myAssignments: swapRes.data.myAssignments });
+      setLeaves(leaveRows);
+      setAtt(attendanceRows);
+      setNotifs(notificationsRes.data.notifications.map((notification) => ({
+        id: notification._id,
+        title: notification.title,
+        body: notification.message,
+        time: new Date(notification.timestamp).toLocaleString(),
+        read: notification.read,
+      })));
+      setPreferences(preferencesSetting?.value || {});
+      setDataError('');
+    } catch (error) {
+      setDataError(error.response?.data?.message || 'Could not load employee data.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.title = 'Dashboard · ShiftWise';
+    loadData(true);
+  }, [loadData]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [section]);
+
+  const logout = () => {
+    localStorage.removeItem('shiftwiseUser');
+    localStorage.removeItem('shiftwiseToken');
+    sessionStorage.removeItem('shiftwiseUser');
+    sessionStorage.removeItem('shiftwiseToken');
+    nav('/login');
+  };
   const unread = notifs.filter((n) => !n.read).length;
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      await loadData(false);
+    } catch (error) {
+      toast(error.response?.data?.message || 'Could not update notifications.');
+    }
+  };
 
   const s = {
-    shifts, setShifts,
+    shifts, setShifts, swapData,
     open, setOpen,
     swaps, setSwaps,
     leaves, setLeaves,
     notifs, setNotifs,
     att, setAtt,
-    toast, addNotif, nav, q
+    profile, preferences, setPreferences,
+    toast, nav, q, reload: () => loadData(false), dataError
   };
 
   const hits = useMemo(() => {
@@ -256,11 +387,7 @@ export default function EmployeeDashboard() {
                 <div className="dh">
                   <b>Notifications</b>
                   <button
-                    onClick={() => {
-                      setNotifs(
-                        notifs.map((n) => ({ ...n, read: true }))
-                      );
-                    }}
+                    onClick={markAllNotificationsRead}
                   >
                     Mark all read
                   </button>
@@ -324,7 +451,7 @@ export default function EmployeeDashboard() {
 
         <main className="page" key={section}>
           <h1 className="pt">{cur[1]}</h1>
-          {loading ? <Skeleton /> : <Page s={s} />}
+          {loading ? <Skeleton /> : <>{dataError && <p className="err" role="alert">{dataError}</p>}<Page s={s} /></>}
         </main>
       </div>
 

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { CalendarCheck, Clock, Sun, Hourglass, ChevronLeft, ChevronRight, Play, Square, Plus } from 'lucide-react';
-import { TODAY, TYPES, addDays, monday, key, fmt, MY_SHIFTS } from './data';
+import { TODAY, TYPES, addDays, monday, key, fmt } from './data';
 import { Pill, Modal, Empty, ShiftCard } from './ui';
+import api from '../api/axios';
 
 const D = { weekday: 'short', day: 'numeric', month: 'short' };
-const lbl = (s) => `${fmt(s.date, D)} · ${TYPES[s.type].label} ${TYPES[s.type].s}–${TYPES[s.type].e}`;
+const lbl = (s) => s
+  ? `${fmt(s.date, D)} · ${TYPES[s.type].label} ${s.startTime || TYPES[s.type].s}–${s.endTime || TYPES[s.type].e}`
+  : 'Shift no longer available';
 const upcoming = (s) => s.shifts.filter((x) => x.date >= TODAY).sort((a, b) => a.date - b.date);
 
 function Cal({ s }) {
@@ -24,7 +27,7 @@ function Cal({ s }) {
           return (
             <div key={key(d)} className={`day${key(d) === key(TODAY) ? ' today' : ''}`}>
               <small>{fmt(d, { weekday: 'short' })}</small><b>{d.getDate()}</b>
-              {list.length ? list.map((x) => <span key={x.id} className={`chip t-${TYPES[x.type].c}`}>{TYPES[x.type].s}–{TYPES[x.type].e}<em>{TYPES[x.type].label}</em></span>) : <span className="off">Off</span>}
+              {list.length ? list.map((x) => <span key={x.id} className={`chip t-${TYPES[x.type].c}`}>{x.startTime || TYPES[x.type].s}–{x.endTime || TYPES[x.type].e}<em>{TYPES[x.type].label}</em></span>) : <span className="off">Off</span>}
             </div>
           );
         })}
@@ -37,10 +40,15 @@ function Cal({ s }) {
 export function Overview({ s }) {
   const up = upcoming(s);
   const wk = monday(TODAY);
-  const hours = s.shifts.filter((x) => x.date >= wk && x.date < addDays(wk, 7)).length * 8;
+  const hours = s.shifts.filter((x) => x.date >= wk && x.date < addDays(wk, 7)).reduce((total, shift) => {
+    const start = shift.startTime || TYPES[shift.type].s;
+    const end = shift.endTime || TYPES[shift.type].e;
+    return total + Math.max(0, (Number(end.slice(0, 2)) * 60 + Number(end.slice(3, 5)) - Number(start.slice(0, 2)) * 60 - Number(start.slice(3, 5)) - (shift.breakDuration || 0)) / 60);
+  }, 0);
   const pend = s.swaps.filter((x) => x.dir === 'mine' && x.status === 'Pending').length + s.leaves.filter((x) => x.status === 'Pending').length;
   const used = s.leaves.filter((l) => l.type === 'Annual leave' && l.status === 'Approved').reduce((n, l) => n + Math.round((l.to - l.from) / 864e5) + 1, 0);
-  const cards = [[CalendarCheck, 'Upcoming shifts', up.length, 'next 14 days', 'a'], [Clock, 'Hours this week', hours, 'scheduled', 'b'], [Sun, 'Leave balance', 21 - used, 'days remaining', 'c'], [Hourglass, 'Pending requests', pend, 'awaiting approval', 'd']];
+  const remaining = Math.max(0, (s.profile?.leaveBalance ?? 21) - used);
+  const cards = [[CalendarCheck, 'Upcoming shifts', up.length, 'next 14 days', 'a'], [Clock, 'Hours this week', hours, 'scheduled', 'b'], [Sun, 'Leave balance', remaining, 'days remaining', 'c'], [Hourglass, 'Pending requests', pend, 'awaiting approval', 'd']];
   return (
     <>
       <p className="lead">Here’s what’s happening with your work week.</p>
@@ -71,18 +79,24 @@ export function Schedule({ s }) {
 
 export function Available({ s }) {
   const [dept, setDept] = useState('All');
-  const [req, setReq] = useState([]);
   const depts = ['All', ...new Set(s.open.map((x) => x.dept))];
   const k = s.q.trim().toLowerCase();
   const list = s.open.filter((x) => (dept === 'All' || x.dept === dept) && (!k || (x.dept + x.loc).toLowerCase().includes(k)));
-  const ask = (x) => { setReq([...req, x.id]); s.toast('Shift requested. Awaiting manager approval.'); s.addNotif('Shift request sent', lbl(x)); };
+  const ask = async (x) => {
+    try {
+      await api.post('/assignments', { shift: x.shiftId, assignedDate: x.date.toISOString() });
+      await s.reload();
+      s.toast('Shift requested. Awaiting manager approval.');
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not request this shift.');
+    }
+  };
   return (
     <section className="card">
       <div className="ch"><h2>Open shifts</h2>
         <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="Filter by department">{depts.map((d) => <option key={d}>{d}</option>)}</select></div>
       <div className="list">{list.length ? list.map((x) => {
-        const done = req.includes(x.id);
-        return <ShiftCard key={x.id} s={done ? { ...x, status: 'Requested' } : x} action={<button className="btn p" disabled={done} onClick={() => ask(x)}>{done ? 'Requested' : 'Request This Shift'}</button>} />;
+        return <ShiftCard key={x.id} s={x} action={<button className="btn p" onClick={() => ask(x)}>Request This Shift</button>} />;
       }) : <Empty text="No open shifts match your filters." />}</div>
     </section>
   );
@@ -91,33 +105,121 @@ export function Available({ s }) {
 export function Swaps({ s }) {
   const [tab, setTab] = useState('mine');
   const [m, setM] = useState(false);
-  const [f, setF] = useState({ shift: '', who: 'Omar T.' });
-  const mine = (id) => MY_SHIFTS.find((x) => x.id === id);
-  const set = (id, status, msg) => { s.setSwaps(s.swaps.map((x) => (x.id === id ? { ...x, status } : x))); s.toast(msg); };
+  const [f, setF] = useState({ shift: '', target: '' });
+  const [targetOptions, setTargetOptions] = useState({ shift: '', assignments: [], loading: false });
+  const [formError, setFormError] = useState('');
+  const mine = (id) => s.shifts.find((x) => String(x.shiftId) === String(id));
+  const shiftLabel = (assignment, colleague) => {
+    if (!assignment?.shift || !assignment.assignedDate) return 'Shift details unavailable';
+    const date = new Date(`${String(assignment.assignedDate).slice(0, 10)}T12:00:00`);
+    const shift = assignment.shift;
+    return [
+      colleague,
+      fmt(date, D),
+      `${shift.startTime}–${shift.endTime}`,
+    ].filter(Boolean).join(' · ');
+  };
+  const set = async (row, status, msg) => {
+    try {
+      if (row.kind === 'swap') {
+        if (status === 'Cancelled') await api.delete(`/swaps/${row.id}`);
+        else await api.patch(`/swaps/${row.id}`, { status });
+      } else if (status === 'Cancelled') {
+        await api.delete(`/requests/changes/${row.id}`);
+      } else {
+        await api.patch(`/requests/changes/${row.id}`, { status });
+      }
+      await s.reload();
+      s.toast(msg);
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not update shift request.');
+    }
+  };
   const rows = s.swaps.filter((x) => x.dir === tab);
-  const submit = (e) => {
+  const selectShift = async (shift) => {
+    setF({ shift, target: '' });
+    setFormError('');
+    setTargetOptions({ shift, assignments: [], loading: Boolean(shift) });
+    if (!shift) return;
+    try {
+      const { data } = await api.get(`/swaps/options?requesterAssignment=${encodeURIComponent(shift)}`);
+      setTargetOptions((current) => current.shift === shift
+        ? { shift, assignments: data.assignments, loading: false }
+        : current);
+    } catch (error) {
+      setTargetOptions((current) => current.shift === shift
+        ? { ...current, loading: false }
+        : current);
+      s.toast(error.response?.data?.message || 'Could not load eligible colleague shifts.');
+    }
+  };
+  const submit = async (e) => {
     e.preventDefault();
-    if (!f.shift) return;
-    s.setSwaps([{ id: 'w' + Math.random(), dir: 'mine', who: f.who, mine: f.shift, theirs: 'Colleague’s shift (to be agreed)', status: 'Pending' }, ...s.swaps]);
-    s.toast('Swap request sent.'); setM(false); setTab('mine');
+    if (!f.shift || !f.target) {
+      setFormError('Choose both of the shifts to submit a swap request.');
+      return;
+    }
+    try {
+      await api.post('/swaps', {
+        requesterAssignment: f.shift,
+        targetAssignment: f.target,
+      });
+      await s.reload();
+      s.toast('Swap request sent.');
+      setM(false);
+      setF({ shift: '', target: '' });
+      setTab('mine');
+      setFormError('');
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not submit shift request.');
+    }
   };
   return (
     <section className="card">
       <div className="ch"><div className="tabs">{[['mine', 'My requests'], ['in', 'Incoming']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
-        <button className="btn p" onClick={() => setM(true)}><Plus size={15} />New swap</button></div>
+        <button className="btn p" onClick={() => {
+          setF({ shift: '', target: '' });
+          setTargetOptions({ shift: '', assignments: [], loading: false });
+          setFormError('');
+          setM(true);
+        }}><Plus size={15} />New swap</button></div>
       <div className="list">{rows.length ? rows.map((x) => (
         <article key={x.id} className="swap">
           <span className="av">{x.who.split(' ').map((p) => p[0]).join('')}</span>
-          <div><h4>{x.who}</h4><p>{tab === 'mine' ? 'Your shift' : 'Their ask for your shift'}: {lbl(mine(x.mine))}</p><p>Requested: {x.theirs}</p></div>
+          <div><h4>{x.who}</h4>
+            {x.kind === 'swap' ? <>
+              <p>{tab === 'mine' ? 'Your shift' : 'Their shift'}: {shiftLabel(x.requesterAssignment, tab === 'in' ? x.who : '')}</p>
+              <p>{tab === 'mine' ? 'Requested shift' : 'Your shift'}: {shiftLabel(x.targetAssignment, tab === 'mine' ? x.who : '')}</p>
+            </> : <>
+              <p>{tab === 'mine' ? 'Your shift' : 'Their ask for your shift'}: {lbl(mine(x.mine))}</p>
+              <p>Requested: {x.theirs}</p>
+            </>}
+          </div>
           <div className="end"><Pill s={x.status} />
-            {x.status === 'Pending' && tab === 'mine' && <button className="btn" onClick={() => set(x.id, 'Rejected', 'Swap request cancelled.')}>Cancel</button>}
-            {x.status === 'Pending' && tab === 'in' && <div className="row"><button className="btn p" onClick={() => set(x.id, 'Approved', 'Swap accepted.')}>Accept</button><button className="btn" onClick={() => set(x.id, 'Rejected', 'Swap declined.')}>Decline</button></div>}</div>
+            {x.status === 'Pending' && tab === 'mine' && <button className="btn" onClick={() => set(x, 'Cancelled', 'Swap request cancelled.')}>Cancel</button>}
+            {x.status === 'Pending' && tab === 'in' && <div className="row"><button className="btn p" onClick={() => set(x, 'Accepted', 'Swap accepted; shifts exchanged.')}>Accept</button><button className="btn" onClick={() => set(x, 'Rejected', 'Swap declined.')}>Decline</button></div>}</div>
         </article>)) : <Empty text="No swap requests here." />}</div>
       {m && <Modal title="New swap request" onClose={() => setM(false)}>
         <form onSubmit={submit} noValidate>
-          <label>Your shift<select value={f.shift} onChange={(e) => setF({ ...f, shift: e.target.value })}><option value="">Select a shift</option>{upcoming(s).map((x) => <option key={x.id} value={x.id}>{lbl(x)}</option>)}</select></label>
-          <label>Swap with<select value={f.who} onChange={(e) => setF({ ...f, who: e.target.value })}>{['Omar T.', 'Maya R.', 'Jon L.', 'Aisha K.'].map((n) => <option key={n}>{n}</option>)}</select></label>
-          {!f.shift && <p className="err">Please choose a shift.</p>}
+          <label>Your shift<select value={f.shift} onChange={(e) => selectShift(e.target.value)}>
+            <option value="">Select a shift</option>
+            {s.swapData.myAssignments.map((assignment) => (
+              <option key={assignment._id} value={assignment._id} disabled={assignment.swapPending}>
+                {shiftLabel(assignment)}{assignment.swapPending ? ' · Swap pending' : ''}
+              </option>
+            ))}
+          </select></label>
+          <label>Swap with<select value={f.target} onChange={(e) => { setF({ ...f, target: e.target.value }); setFormError(''); }} disabled={!f.shift || targetOptions.loading}>
+            <option value="">{targetOptions.loading ? 'Loading eligible shifts…' : 'Select a colleague’s shift'}</option>
+            {targetOptions.shift === f.shift && targetOptions.assignments.map((assignment) => (
+              <option key={assignment._id} value={assignment._id}>
+                {shiftLabel(assignment, assignment.employee?.fullName)}
+              </option>
+            ))}
+          </select></label>
+          {f.shift && !targetOptions.loading && targetOptions.shift === f.shift && !targetOptions.assignments.length && <p className="err">No eligible colleague shifts are available for this shift.</p>}
+          {!s.swapData.myAssignments.length && <p className="err">You have no upcoming confirmed shifts to swap.</p>}
+          {formError && <p className="err">{formError}</p>}
           <button className="btn p wide" type="submit">Send request</button>
         </form></Modal>}
     </section>
@@ -132,7 +234,7 @@ export function Leave({ s }) {
   const used = s.leaves.filter((l) => l.type === 'Annual leave' && l.status === 'Approved').reduce((n, l) => n + Math.round((l.to - l.from) / 864e5) + 1, 0);
   const upc = s.leaves.filter((l) => l.status === 'Approved' && l.to >= TODAY);
   const close = () => { setM(false); setEr({}); setF({ type: 'Annual leave', from: '', to: '', reason: '' }); };
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     const x = {};
     if (!f.from) x.from = 'Choose a start date.';
@@ -142,8 +244,19 @@ export function Leave({ s }) {
     if (f.reason.trim().length < 5) x.reason = 'Please add a reason (5+ characters).';
     setEr(x);
     if (Object.keys(x).length) return;
-    s.setLeaves([{ id: 'l' + Math.random(), type: f.type, from: new Date(f.from + 'T00:00'), to: new Date(f.to + 'T00:00'), reason: f.reason.trim(), status: 'Pending' }, ...s.leaves]);
-    s.toast('Leave request submitted.'); close();
+    try {
+      await api.post('/leaves', {
+        leaveType: f.type,
+        startDate: f.from,
+        endDate: f.to,
+        reason: f.reason.trim(),
+      });
+      await s.reload();
+      s.toast('Leave request submitted.');
+      close();
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not submit leave request.');
+    }
   };
   const row = (l) => <div key={l.id} className="lrow"><div><b>{l.type}</b><span>{fmt(l.from, D)}{+l.from !== +l.to && ` – ${fmt(l.to, D)}`} · {l.reason}</span></div><Pill s={l.status} /></div>;
   return (
@@ -169,33 +282,36 @@ export function Leave({ s }) {
 
 const pad = (n) => String(n).padStart(2, '0');
 export function Attendance({ s }) {
-  const [inAt, setIn] = useState(null);
   const [now, setNow] = useState(0);
+  const activeRecord = s.att.find((record) =>
+    new Date(record.date).toDateString() === TODAY.toDateString() &&
+    record.checkInTime &&
+    !record.checkOutTime
+  );
+  const inAt = activeRecord ? new Date(activeRecord.checkInTime).getTime() : null;
   useEffect(() => {
     if (!inAt) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [inAt]);
-  const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  const toggle = () => {
-    if (!inAt) { setIn(Date.now()); setNow(Date.now()); s.toast('Clocked in. Have a great shift!'); return; }
-const a = new Date(inAt);
-const b = new Date();
-
-s.setAtt([{
-  id: 'a' + inAt,
-  date: TODAY,
-  in: hm(a),
-  out: hm(b),
-  inSeconds: Math.floor(inAt / 1000),
-  outSeconds: Math.floor(b.getTime() / 1000),
-  late: a.getHours() > 7 || (a.getHours() === 7 && a.getMinutes() > 10)
-}, ...s.att]);
-    setIn(null); s.toast('Clocked out. Record saved to this session.');
+  const toggle = async () => {
+    try {
+      if (!inAt) {
+        await api.post('/attendance/check-in', { date: key(TODAY) });
+        await s.reload();
+        s.toast('Clocked in. Have a great shift!');
+        return;
+      }
+      await api.post('/attendance/check-out', { date: key(TODAY) });
+      await s.reload();
+      s.toast('Clocked out. Attendance record saved.');
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not update attendance.');
+    }
   };
   const el = inAt ? Math.max(0, Math.floor((now - inAt) / 1000)) : 0;
 const totalSeconds = s.att.reduce((total, a) => {
-  if (a.inSeconds != null && a.outSeconds != null) {
+  if (a.inSeconds != null && a.outSeconds != null && a.date >= addDays(TODAY, -6)) {
     return total + (a.outSeconds - a.inSeconds);
   }
   return total;
@@ -232,11 +348,27 @@ const workedHours = `${hours}h ${minutes}m`;
 export function Notifications({ s }) {
   const [only, setOnly] = useState(false);
   const list = s.notifs.filter((n) => !only || !n.read);
-  const flip = (id) => s.setNotifs(s.notifs.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  const flip = async (id) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      await s.reload();
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not update notification.');
+    }
+  };
+  const markAllRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      await s.reload();
+      s.toast('All notifications marked as read.');
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not update notifications.');
+    }
+  };
   return (
     <section className="card">
       <div className="ch"><div className="tabs"><button className={!only ? 'on' : ''} onClick={() => setOnly(false)}>All</button><button className={only ? 'on' : ''} onClick={() => setOnly(true)}>Unread</button></div>
-        <button className="lnk" onClick={() => { s.setNotifs(s.notifs.map((n) => ({ ...n, read: true }))); s.toast('All notifications marked as read.'); }}>Mark all as read</button></div>
+        <button className="lnk" onClick={markAllRead}>Mark all as read</button></div>
       {list.length ? list.map((n) => (
         <div key={n.id} className={`nrow big${n.read ? '' : ' un'}`}><div><b>{n.title}</b><p>{n.body}</p><span>{n.time}</span></div>{!n.read && <button className="btn" onClick={() => flip(n.id)}>Mark as read</button>}</div>
       )) : <Empty text="You’re all caught up." />}
@@ -245,12 +377,9 @@ export function Notifications({ s }) {
 }
 
 
-export function Profile() {
-  const user = JSON.parse(
-    localStorage.getItem("shiftwiseUser") || "{}"
-  );
-
-  const name = user.name || "Employee";
+export function Profile({ s }) {
+  const user = s.profile || {};
+  const name = user.fullName || "Employee";
   const email = user.email || "No email available";
 
   const initials = name
@@ -267,20 +396,20 @@ export function Profile() {
 
       <div>
         <h2>{name}</h2>
-        <p>Employee · ShiftWise</p>
+        <p>{user.designation || "Employee"} · ShiftWise</p>
 
         <dl>
           <dt>Email</dt>
           <dd>{email}</dd>
 
           <dt>Employee ID</dt>
-          <dd>Not assigned</dd>
+          <dd>{user.employeeId || "Not assigned"}</dd>
 
           <dt>Manager</dt>
-          <dd>Not assigned</dd>
+          <dd>{user.managerName || "Not assigned"}</dd>
 
           <dt>Contract</dt>
-          <dd>Not assigned</dd>
+          <dd>{user.contract || "Not assigned"}</dd>
         </dl>
       </div>
     </section>
@@ -289,11 +418,22 @@ export function Profile() {
 
 
 export function Prefs({ s }) {
-  const [p, setP] = useState({ 'Shift reminders': true, 'Swap request alerts': true, 'Weekly schedule email': false });
+  const defaults = { 'Shift reminders': true, 'Swap request alerts': true, 'Weekly schedule email': false };
+  const p = { ...defaults, ...(s.preferences || {}) };
+  const flip = async (key) => {
+    const next = { ...p, [key]: !p[key] };
+    try {
+      await api.put('/settings/employeePreferences', { scope: 'Employee', value: next });
+      s.setPreferences(next);
+      s.toast(`${key} ${p[key] ? 'off' : 'on'}.`);
+    } catch (error) {
+      s.toast(error.response?.data?.message || 'Could not save preference.');
+    }
+  };
   return (
     <section className="card"><div className="ch"><h2>Preferences</h2></div>
       {Object.keys(p).map((k) => (
-        <label key={k} className="tog"><span>{k}</span><input type="checkbox" checked={p[k]} onChange={() => { setP({ ...p, [k]: !p[k] }); s.toast(`${k} ${p[k] ? 'off' : 'on'}.`); }} /><i /></label>
+        <label key={k} className="tog"><span>{k}</span><input type="checkbox" checked={p[k]} onChange={() => flip(k)} /><i /></label>
       ))}</section>
   );
 }

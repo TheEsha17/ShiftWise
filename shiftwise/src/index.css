@@ -21,6 +21,28 @@ body {
   overflow-x: hidden;
 }
 
+/* Keep page scrolling usable without showing the viewport scrollbar. */
+html,
+body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scrollbar-color: transparent transparent;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
 /* AdminProvider renders notifications beside the dashboard shell. Keep these
    rules global so the toast stays styled and pinned to the visible viewport. */
 .tsw {

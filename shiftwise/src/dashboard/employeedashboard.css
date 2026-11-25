@@ -8,7 +8,7 @@
 .sw :focus-visible{outline:3px solid var(--pers);outline-offset:2px}
 .sw .serif,.sw h1,.sw h2,.sw .stat b,.sw .logo{font-family:Fraunces,Georgia,serif}
 /* sidebar */
-.side{position:sticky;top:0;height:100vh;height:100dvh;width:260px;flex:none;background:var(--ink);color:var(--parch);padding:24px 16px;display:flex;flex-direction:column;gap:8px;z-index:40;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.side{position:sticky;top:0;height:100vh;height:100dvh;width:260px;flex:none;background:var(--ink);color:var(--parch);padding:24px 15px;display:flex;flex-direction:column;gap:8px;z-index:40;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
 .logo{display:flex;align-items:center;gap:10px;font-weight:600;font-size:21px;padding:0 10px 20px;color:var(--parch);text-decoration:none}
 .logo i{width:26px;height:26px;background:var(--parch);border-radius:50% 50% 50% 4px;position:relative}
 .logo i::after{content:"";position:absolute;inset:7px;background:var(--chart);border-radius:50%}

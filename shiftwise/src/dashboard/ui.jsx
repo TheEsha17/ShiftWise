@@ -3,7 +3,7 @@ import { X, Check } from 'lucide-react';
 import { TYPES, fmt } from './data';
 
 export const Pill = ({ s }) => {
-  const k = { Confirmed: 'ok', Approved: 'ok', Open: 'ok', Pending: 'wait', 'Pending swap': 'wait', Requested: 'wait', Urgent: 'hot', Rejected: 'no' }[s] || 'ok';
+  const k = { Confirmed: 'ok', Approved: 'ok', Accepted: 'ok', Open: 'ok', Pending: 'wait', 'Pending swap': 'wait', Requested: 'wait', Urgent: 'hot', Rejected: 'no', Cancelled: 'no' }[s] || 'ok';
   return <span className={`pill ${k}`}>{s}</span>;
 };
 
@@ -31,12 +31,15 @@ export function Skeleton() {
 
 export function ShiftCard({ s, action }) {
   const t = TYPES[s.type];
+  const startTime = s.startTime || t.s;
+  const endTime = s.endTime || t.e;
+  const duration = Math.max(0, (Number(endTime.slice(0, 2)) * 60 + Number(endTime.slice(3, 5)) - Number(startTime.slice(0, 2)) * 60 - Number(startTime.slice(3, 5)) - (s.breakDuration || 0)) / 60);
   return (
     <article className={`shift t-${t.c}`}>
       <div className="dt"><small>{fmt(s.date, { weekday: 'short' })}</small><b>{s.date.getDate()}</b><small>{fmt(s.date, { month: 'short' })}</small></div>
       <div className="mid">
-        <h4>{t.s} – {t.e}</h4>
-        <p>{t.label} shift · 8h · {s.dept}</p>
+        <h4>{startTime} – {endTime}</h4>
+        <p>{t.label} shift · {duration}h · {s.dept}</p>
         <p className="loc">{s.loc}</p>
       </div>
       <div className="end"><Pill s={s.status} />{action}</div>
