@@ -48,16 +48,20 @@ export default function AccessRequests() {
               <small>Submitted {dateLabel(request.createdAt)}</small>
             </div>
             <div className="ac access-request-actions">
-              <span className="pl">{request.requestedRole}</span>
-              <Pill s={request.status} />
+              <div className="access-request-badges">
+                <span className="pl">{request.requestedRole}</span>
+                <Pill s={request.status} />
+              </div>
               {request.status === "Pending" && (
-                <>
-                  <button className="bt l s" disabled={!!busy} onClick={() => act(request, "approve")}>{busy === `${request._id}:approve` ? "Sending…" : "Approve & invite"}</button>
-                  <button className="bt o s" disabled={!!busy} onClick={() => act(request, "reject")}>{busy === `${request._id}:reject` ? "Rejecting…" : "Reject"}</button>
-                </>
+                <div className="access-request-buttons">
+                  <button className="access-request-action" disabled={!!busy} onClick={() => act(request, "approve")}>{busy === `${request._id}:approve` ? "Sending…" : "Approve & invite"}</button>
+                  <button className="access-request-action access-request-reject" disabled={!!busy} onClick={() => act(request, "reject")}>{busy === `${request._id}:reject` ? "Rejecting…" : "Reject"}</button>
+                </div>
               )}
               {request.status === "Approved" && request.invitationPending && (
-                <button className="bt o s" disabled={!!busy} onClick={() => act(request, "resend")}>{busy === `${request._id}:resend` ? "Sending…" : "Resend invite"}</button>
+                <div className="access-request-buttons access-request-buttons-single">
+                  <button className="bt o s access-request-action" disabled={!!busy} onClick={() => act(request, "resend")}>{busy === `${request._id}:resend` ? "Sending…" : "Resend invite"}</button>
+                </div>
               )}
             </div>
           </article>
