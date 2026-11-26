@@ -5,6 +5,11 @@ const User = require("../models/User");
 const LeaveRequest = require("../models/LeaveRequest");
 const Notification = require("../models/Notification");
 const notifyAdmins = require("../utils/notifyAdmins");
+const {
+  incomingSwapNotification,
+  outgoingSwapRequestNotification,
+  outgoingSwapNotification,
+} = require("../utils/swapNotifications");
 const asyncHandler = require("../utils/asyncHandler");
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -231,10 +236,11 @@ exports.create = asyncHandler(async (req, res) => {
         req.user._id,
         session
       );
+      const targetEmployeeId = assignmentOwner(targetAssignment);
       const request = new ShiftSwapRequest({
         requester: req.user._id,
         requesterAssignment: requesterAssignment._id,
-        targetEmployee: targetAssignment.employee._id,
+        targetEmployee: targetEmployeeId,
         targetAssignment: targetAssignment._id,
       });
       await request.save({ session });
@@ -245,7 +251,7 @@ exports.create = asyncHandler(async (req, res) => {
         { session }
       );
       const targetLock = await ShiftAssignment.updateOne(
-        { _id: targetAssignment._id, employee: targetAssignment.employee._id, status: "Confirmed", swapRequest: null },
+        { _id: targetAssignment._id, employee: targetEmployeeId, status: "Confirmed", swapRequest: null },
         { $set: { swapRequest: request._id } },
         { session }
       );
@@ -253,12 +259,17 @@ exports.create = asyncHandler(async (req, res) => {
         fail(409, "One of these shifts has already been requested for a swap.");
       }
 
-      await Notification.create([{
-        recipient: targetAssignment.employee._id,
-        title: "Incoming shift swap request",
-        message: `${req.user.fullName} requested to swap a shift with you.`,
-        type: "Request",
-      }], { session });
+      await Notification.create([
+        incomingSwapNotification({
+          recipient: targetEmployeeId,
+          requestId: request._id,
+          requesterName: req.user.fullName,
+        }),
+        outgoingSwapRequestNotification({
+          recipient: req.user._id,
+          requestId: request._id,
+        }),
+      ], { session, ordered: true });
       const shiftDescription = (assignment) =>
         `${assignment.shift.type} shift on ${dayStart(assignment.assignedDate).toISOString().slice(0, 10)} (${assignment.shift.startTime}–${assignment.shift.endTime})`;
       await notifyAdmins({
@@ -364,14 +375,12 @@ exports.respond = asyncHandler(async (req, res) => {
       request.status = status;
       request.respondedAt = new Date();
       await request.save({ session });
-      await Notification.create([{
+      await Notification.create([outgoingSwapNotification({
         recipient: request.requester,
-        title: `Shift swap ${status.toLowerCase()}`,
-        message: status === "Accepted"
-          ? `${req.user.fullName} accepted your request and the shifts were exchanged.`
-          : `${req.user.fullName} declined your shift swap request.`,
-        type: "Request",
-      }], { session });
+        requestId: request._id,
+        responderName: req.user.fullName,
+        status,
+      })], { session });
       requestId = request._id;
     });
   } finally {

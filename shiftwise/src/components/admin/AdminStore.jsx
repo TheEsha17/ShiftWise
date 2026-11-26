@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import api from "../../api/axios";
+import { dateFromKey, dateKeyFromValue, fullDateLabel, legacyShiftDateKey, weekdayIndexForDateKey, weekOffsetForDateKey } from "../../utils/calendarDate";
 
 // ---------- constants ----------
 export const DP = ["Floor Service", "Bar", "Kitchen"];
@@ -39,7 +40,11 @@ export function Modal({ title, fields, init, onSave, onClose }) {
         {fields.map(([k, l, t, o]) => (
           <label key={k}>{l}
             {o ? (
-              <select className="in" value={v[k]} onChange={(e) => set(k, e.target.value)}>{o.map((x) => <option key={x}>{x}</option>)}</select>
+              <select className="in" value={v[k]} onChange={(e) => set(k, e.target.value)}>{o.map((x) => {
+                const value = typeof x === "string" ? x : x.value;
+                const label = typeof x === "string" ? x : x.label;
+                return <option key={value} value={value}>{label}</option>;
+              })}</select>
             ) : (
               <input className="in" type={t || "text"} value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />
             )}
@@ -51,25 +56,11 @@ export function Modal({ title, fields, init, onSave, onClose }) {
   );
 }
 
-const startOfWeek = (date) => {
-  const result = new Date(date);
-  result.setHours(0, 0, 0, 0);
-  result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
-  return result;
-};
-const shiftDate = (weekOffset, dayIndex) => {
-  const monday = startOfWeek(new Date());
-  return new Date(Date.UTC(
-    monday.getFullYear(),
-    monday.getMonth(),
-    monday.getDate() + weekOffset * 7 + dayIndex
-  ));
-};
 const shiftLabel = (shift) => shift
   ? `${shift.startTime}–${shift.endTime} · ${shift.type} · ${shift.department} · ${shift.location}`
   : "Shift details unavailable";
 const assignmentLabel = (assignment) => assignment
-  ? `${new Date(assignment.assignedDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · ${shiftLabel(assignment.shift)}`
+  ? `${fullDateLabel(dateKeyFromValue(assignment.assignedDate))} · ${shiftLabel(assignment.shift)}`
   : "Shift details unavailable";
 
 const Ctx = createContext(null);
@@ -110,17 +101,20 @@ export function AdminProvider({ children }) {
       const assignmentRows = assignments.data.assignments;
       setAssignments(assignmentRows);
       const shiftRows = shifts.data.shifts.map((shift) => {
-        const weekOffset = shift.weekOffset || 0;
-        const day = shift.dayIndex || 0;
-        const assignedOnDate = shiftDate(weekOffset, day).toISOString().slice(0, 10);
+        const actualDate = dateKeyFromValue(shift.shiftDate) || legacyShiftDateKey(shift.weekOffset, shift.dayIndex);
+        const weekOffset = weekOffsetForDateKey(actualDate);
+        const day = weekdayIndexForDateKey(actualDate);
         const assigned = assignmentRows.filter((assignment) =>
           assignment.shift?._id === shift._id &&
           assignment.status !== "Cancelled" &&
-          new Date(assignment.assignedDate).toISOString().slice(0, 10) === assignedOnDate
+          dateKeyFromValue(assignment.assignedDate) === actualDate
         );
         return {
           ...shift,
           id: shift._id,
+          dateKey: actualDate,
+          date: dateFromKey(actualDate),
+          dateLabel: fullDateLabel(actualDate),
           wk: weekOffset,
           day,
           type: shift.type,

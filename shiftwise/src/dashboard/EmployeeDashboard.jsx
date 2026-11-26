@@ -10,9 +10,11 @@ import {
 import './employeedashboard.css';
 
 import {
-  TODAY, monday, fmt
+  TODAY, fmt
 } from './data';
 import api from '../api/axios';
+import { dateFromKey, dateKeyFromValue, localDateKey } from '../utils/calendarDate';
+import { unreadSwapNotificationCounts } from './notificationCounts';
 
 import { Skeleton } from './ui';
 
@@ -44,6 +46,19 @@ const PAGES = {
   profile: Profile,
   settings: Prefs
 };
+
+const mapSwapRequests = (requests, employeeId) => requests.map((request) => {
+  const isRequester = String(request.requester?._id) === String(employeeId);
+  return {
+    id: String(request._id),
+    kind: 'swap',
+    dir: isRequester ? 'mine' : 'in',
+    who: isRequester ? request.targetEmployee?.fullName : request.requester?.fullName,
+    requesterAssignment: request.requesterAssignment,
+    targetAssignment: request.targetAssignment,
+    status: request.status,
+  };
+});
 
 const hour = new Date().getHours();
 
@@ -127,7 +142,7 @@ export default function EmployeeDashboard() {
         id: item._id,
         assignmentId: item._id,
         shiftId: item.shift._id,
-        date: new Date(item.assignedDate),
+        date: dateFromKey(dateKeyFromValue(item.assignedDate)),
         type: normalizeType(item.shift.type),
         startTime: item.shift.startTime,
         endTime: item.shift.endTime,
@@ -137,28 +152,26 @@ export default function EmployeeDashboard() {
         status: item.status,
       }));
       const myShiftIds = new Set(assigned.map((item) => String(item.shift?._id)));
-      const weekStart = monday(TODAY);
-      const occurrenceDate = (weekOffset, dayIndex) => new Date(Date.UTC(
-        weekStart.getFullYear(),
-        weekStart.getMonth(),
-        weekStart.getDate() + weekOffset * 7 + dayIndex
-      ));
       const openShifts = shiftsRes.data.shifts
         .filter((shift) => shift.status === 'Active' && shift.openSlots > 0 && !myShiftIds.has(String(shift._id)))
-        .map((shift) => ({
-          id: `${shift._id}-${shift.weekOffset || 0}-${shift.dayIndex || 0}`,
-          shiftId: shift._id,
-          date: occurrenceDate(shift.weekOffset || 0, shift.dayIndex || 0),
-          type: normalizeType(shift.type),
-          startTime: shift.startTime,
-          endTime: shift.endTime,
-          breakDuration: shift.breakDuration,
-          dept: shift.department,
-          loc: shift.location,
-          status: 'Open',
-          openSlots: shift.openSlots,
-        }))
-        .filter((shift) => shift.date.toISOString().slice(0, 10) >= TODAY.toISOString().slice(0, 10));
+        .map((shift) => {
+          const shiftDate = dateKeyFromValue(shift.shiftDate);
+          return {
+            id: `${shift._id}-${shiftDate}`,
+            shiftId: shift._id,
+            date: dateFromKey(shiftDate),
+            dateKey: shiftDate,
+            type: normalizeType(shift.type),
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            breakDuration: shift.breakDuration,
+            dept: shift.department,
+            loc: shift.location,
+            status: 'Open',
+            openSlots: shift.openSlots,
+          };
+        })
+        .filter((shift) => shift.dateKey >= localDateKey(TODAY));
       const leaveRows = leavesRes.data.requests.map((request) => ({
         id: request._id,
         type: request.leaveType,
@@ -179,18 +192,7 @@ export default function EmployeeDashboard() {
           : request.requestedShift?.label || 'Shift change requested',
         status: request.status,
       }));
-      const swapRows = swapRes.data.requests.map((request) => {
-        const isRequester = String(request.requester?._id) === String(employeeProfile._id);
-        return {
-          id: request._id,
-          kind: 'swap',
-          dir: isRequester ? 'mine' : 'in',
-          who: isRequester ? request.targetEmployee?.fullName : request.requester?.fullName,
-          requesterAssignment: request.requesterAssignment,
-          targetAssignment: request.targetAssignment,
-          status: request.status,
-        };
-      });
+      const swapRows = mapSwapRequests(swapRes.data.requests, employeeProfile._id);
       const attendanceRows = attendanceRes.data.records.map((record) => ({
         ...record,
         id: record._id,
@@ -216,6 +218,8 @@ export default function EmployeeDashboard() {
         body: notification.message,
         time: new Date(notification.timestamp).toLocaleString(),
         read: notification.read,
+        relatedSwapRequest: notification.relatedSwapRequest ? String(notification.relatedSwapRequest) : null,
+        swapDirection: notification.swapDirection || null,
       })));
       setPreferences(preferencesSetting?.value || {});
       setDataError('');
@@ -233,6 +237,40 @@ export default function EmployeeDashboard() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [section]);
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const [notificationResponse, swapResponse] = await Promise.all([
+        api.get('/notifications'),
+        api.get('/swaps'),
+      ]);
+      setNotifs(notificationResponse.data.notifications.map((notification) => ({
+        id: notification._id,
+        title: notification.title,
+        body: notification.message,
+        time: new Date(notification.timestamp).toLocaleString(),
+        read: notification.read,
+        relatedSwapRequest: notification.relatedSwapRequest ? String(notification.relatedSwapRequest) : null,
+        swapDirection: notification.swapDirection || null,
+      })));
+      const currentSwapRows = mapSwapRequests(swapResponse.data.requests, user.id);
+      setSwaps((current) => [...current.filter((request) => request.kind !== 'swap'), ...currentSwapRows]);
+    } catch {
+      // Keep the last known request and badge state when a background refresh fails.
+    }
+  }, [user.id]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshNotifications();
+    };
+    const interval = setInterval(refreshWhenVisible, 15000);
+    window.addEventListener('focus', refreshWhenVisible);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenVisible);
+    };
+  }, [refreshNotifications]);
 
   const logout = () => {
     localStorage.removeItem('shiftwiseUser');
@@ -288,6 +326,7 @@ export default function EmployeeDashboard() {
 
   const Page = PAGES[section] || Overview;
   const cur = NAV.find((n) => n[0] === section) || NAV[0];
+  const incomingSwapUnread = unreadSwapNotificationCounts(notifs, swaps).incoming;
 
   return (
     <div className="sw" onClick={() => setMenu(null)}>
@@ -308,6 +347,9 @@ export default function EmployeeDashboard() {
               {label}
               {k === 'notifications' && unread > 0 && (
                 <em>{unread}</em>
+              )}
+              {k === 'swaps' && incomingSwapUnread > 0 && (
+                <em aria-label={`${incomingSwapUnread} unread pending incoming swap requests`}>{incomingSwapUnread}</em>
               )}
             </NavLink>
           ))}

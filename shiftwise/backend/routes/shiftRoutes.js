@@ -16,11 +16,12 @@ router.post("/",
     body("endTime").matches(/^\d{2}:\d{2}$/),
     body("department").trim().notEmpty(),
     body("location").trim().notEmpty(),
+    body("shiftDate").isISO8601({ strict: true, strictSeparator: true }),
   ],
   validate,
   controller.create
 );
-router.patch("/:id", authorize("Admin"), controller.update);
+router.patch("/:id", authorize("Admin"), [body("shiftDate").optional().isISO8601({ strict: true, strictSeparator: true })], validate, controller.update);
 router.delete("/:id", authorize("Admin"), controller.remove);
 
 module.exports = router;

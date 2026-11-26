@@ -17,6 +17,7 @@
 .ni:hover{background:rgba(244,240,231,.08);color:var(--parch);transform:translateX(3px)}
 .ni.act{background:var(--chart);color:var(--ink)}
 .ni em{margin-left:auto;font-style:normal;font-size:11px;font-weight:600;background:var(--pers);color:var(--ink);border-radius:99px;padding:1px 8px}
+.tabs button .swap-notif-count{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;margin-left:7px;padding:0 4px;border-radius:50%;background:var(--pers);color:var(--ink);font-size:10px;font-style:normal;font-weight:700;line-height:1;vertical-align:middle}
 .ni.out{border-top:1px solid rgba(244,240,231,.14);border-radius:0 0 8px 8px;margin-top:8px}
 .scrim{position:fixed;inset:0;background:rgba(32,37,34,.5);z-index:30;animation:fi .25s}
 @keyframes fi{from{opacity:0}}

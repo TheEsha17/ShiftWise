@@ -10,9 +10,15 @@ const shiftSchema = new mongoose.Schema({
   department: { type: String, required: true, trim: true },
   location: { type: String, required: true, trim: true },
   staffRequired: { type: Number, min: 1, required: true, default: 1 },
+  shiftDate: { type: Date },
   weekOffset: { type: Number, default: 0 },
   dayIndex: { type: Number, min: 0, max: 6, default: 0 },
   status: { type: String, enum: ["Active", "Inactive"], default: "Active" },
 }, { timestamps: true });
+
+shiftSchema.index(
+  { shiftDate: 1, type: 1, startTime: 1, endTime: 1, department: 1, location: 1 },
+  { unique: true, partialFilterExpression: { shiftDate: { $type: "date" } } }
+);
 
 module.exports = mongoose.model("Shift", shiftSchema);

@@ -87,6 +87,10 @@ export default function Login() {
         role: normalizedRole,
       };
 
+      localStorage.removeItem("shiftwiseToken");
+      localStorage.removeItem("shiftwiseUser");
+      sessionStorage.removeItem("shiftwiseToken");
+      sessionStorage.removeItem("shiftwiseUser");
       if (remember) {
         localStorage.setItem("shiftwiseToken", response.data.token);
         localStorage.setItem("shiftwiseUser", JSON.stringify(user));

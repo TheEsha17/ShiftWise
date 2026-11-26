@@ -171,9 +171,9 @@ export default function ShiftWise() {
       
       <section className="show"><div className="wrap" data-io>
        <h2 className="rv">One product, two points of view.</h2>
-       <div className="tabs" role="tablist" aria-label="Product views" id="tabs">
+       <div className="showcase-tabs" role="tablist" aria-label="Product views" id="tabs">
                 {NAMES.map((n, i) => (
-                  <button key={n} className="tab" role="tab" aria-selected={a === i} onClick={() => setA(i)}>{n}</button>
+                 <button key={n} className="showcase-tab" role="tab" aria-selected={a === i} onClick={() => setA(i)}>{n}</button>
                 ))}
               </div>
        <div className="stage" id="stage">
@@ -213,7 +213,7 @@ a{color:inherit;text-decoration:none}
 /* nav */
 header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--parch);border-bottom:1px solid var(--line)}
 nav{display:flex;align-items:center;gap:32px;height:68px}
-.logo{display:flex;align-items:center;gap:10px;font:600 21px Fraunces,serif;margin-right:auto}
+header .logo{color:#000}.logo{display:flex;align-items:center;gap:10px;font:600 21px Fraunces,serif;margin-right:auto}
 .logo i{width:26px;height:26px;background:var(--ink);border-radius:50% 50% 50% 4px;position:relative}
 .logo i::after{content:"";position:absolute;inset:7px;background:var(--chart);border-radius:50%}
 .links{display:flex;gap:28px;font-size:15px;font-weight:500}
@@ -327,9 +327,9 @@ h2{font:500 clamp(34px,4.6vw,64px)/1 Fraunces,serif;letter-spacing:-.02em;max-wi
 @media(max-width:860px){.steps{grid-template-columns:1fr}.steps svg{display:none}.st{padding:0 0 0 90px}}
 /* showcase */
 .show{background:var(--ink);color:var(--parch)}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:32px 0 40px}
-.tab{padding:9px 18px;border:1.5px solid var(--parch);background:none;color:var(--parch);font:500 14px 'Inter Tight';border-radius:99px;cursor:pointer;transition:.25s}
-.tab[aria-selected=true]{background:var(--chart);color:var(--ink);border-color:var(--chart)}
+.showcase-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:32px 0 40px}
+.showcase-tab{padding:9px 18px;border:1.5px solid var(--parch);background:none;color:var(--parch);font:500 14px 'Inter Tight';border-radius:99px;cursor:pointer;transition:.25s}
+.showcase-tab[aria-selected=true]{background:var(--chart);color:var(--ink);border-color:var(--chart)}
 .stage{position:relative;height:clamp(420px,52vw,540px)}
 .win{position:absolute;width:62%;color:var(--ink);transition:transform .7s cubic-bezier(.2,.8,.2,1),opacity .5s,z-index 0s .2s;box-shadow:0 24px 60px rgba(0,0,0,.45)}
 .win .app{box-shadow:none;border-color:#000}

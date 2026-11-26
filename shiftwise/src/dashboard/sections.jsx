@@ -3,6 +3,8 @@ import { CalendarCheck, Clock, Sun, Hourglass, ChevronLeft, ChevronRight, Play, 
 import { TODAY, TYPES, addDays, monday, key, fmt } from './data';
 import { Pill, Modal, Empty, ShiftCard } from './ui';
 import api from '../api/axios';
+import { unreadSwapNotificationCounts } from './notificationCounts';
+import { dateKeyFromValue } from '../utils/calendarDate';
 
 const D = { weekday: 'short', day: 'numeric', month: 'short' };
 const lbl = (s) => s
@@ -84,7 +86,7 @@ export function Available({ s }) {
   const list = s.open.filter((x) => (dept === 'All' || x.dept === dept) && (!k || (x.dept + x.loc).toLowerCase().includes(k)));
   const ask = async (x) => {
     try {
-      await api.post('/assignments', { shift: x.shiftId, assignedDate: x.date.toISOString() });
+      await api.post('/assignments', { shift: x.shiftId, assignedDate: dateKeyFromValue(x.date) });
       await s.reload();
       s.toast('Shift requested. Awaiting manager approval.');
     } catch (error) {
@@ -108,6 +110,7 @@ export function Swaps({ s }) {
   const [f, setF] = useState({ shift: '', target: '' });
   const [targetOptions, setTargetOptions] = useState({ shift: '', assignments: [], loading: false });
   const [formError, setFormError] = useState('');
+  const { incoming: incomingUnread, outgoing: outgoingUnread } = unreadSwapNotificationCounts(s.notifs, s.swaps);
   const mine = (id) => s.shifts.find((x) => String(x.shiftId) === String(id));
   const shiftLabel = (assignment, colleague) => {
     if (!assignment?.shift || !assignment.assignedDate) return 'Shift details unavailable';
@@ -176,7 +179,7 @@ export function Swaps({ s }) {
   };
   return (
     <section className="card">
-      <div className="ch"><div className="tabs">{[['mine', 'My requests'], ['in', 'Incoming']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="ch"><div className="tabs">{[['mine', 'My requests', outgoingUnread], ['in', 'Incoming', incomingUnread]].map(([k, l, count]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{count > 0 && <em className="swap-notif-count" aria-label={`${count} unread swap notifications`}>{count}</em>}</button>)}</div>
         <button className="btn p" onClick={() => {
           setF({ shift: '', target: '' });
           setTargetOptions({ shift: '', assignments: [], loading: false });

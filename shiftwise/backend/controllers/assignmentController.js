@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Notification = require("../models/Notification");
 const notifyAdmins = require("../utils/notifyAdmins");
 const asyncHandler = require("../utils/asyncHandler");
+const { calendarDate, dateKey, legacyShiftDate } = require("../utils/shiftDate");
 
 const toMinutes = (value) => {
   const [hours, minutes] = value.split(":").map(Number);
@@ -36,9 +37,12 @@ exports.create = asyncHandler(async (req, res) => {
   if (!employeeRecord) return res.status(404).json({ message: "Active employee not found" });
   const shiftRecord = await Shift.findById(shift);
   if (!shiftRecord) return res.status(404).json({ message: "Shift not found" });
+  const dateStart = calendarDate(assignedDate);
+  const expectedShiftDate = shiftRecord.shiftDate || legacyShiftDate(shiftRecord.weekOffset, shiftRecord.dayIndex);
+  if (dateKey(dateStart) !== dateKey(expectedShiftDate)) {
+    return res.status(422).json({ message: "Assignment date must match the selected shift date." });
+  }
 
-  const dateStart = new Date(assignedDate);
-  dateStart.setUTCHours(0, 0, 0, 0);
   const dateEnd = new Date(dateStart);
   dateEnd.setUTCDate(dateEnd.getUTCDate() + 1);
   const existing = await ShiftAssignment.find({
@@ -77,7 +81,7 @@ exports.create = asyncHandler(async (req, res) => {
     await Notification.create({
       recipient: assignment.employee._id,
       title: "New shift assigned",
-      message: `A ${assignment.shift.type.toLowerCase()} shift was assigned on ${dateStart.toLocaleDateString()}.`,
+      message: `A ${assignment.shift.type.toLowerCase()} shift was assigned on ${dateKey(dateStart)}.`,
       type: "Shift",
     });
   } else {
